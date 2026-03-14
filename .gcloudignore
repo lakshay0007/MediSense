@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+.dockerignore
+.gcloudignore
+README.md
+.env
+.venv/
+venv/
+node_modules/

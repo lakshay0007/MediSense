@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediSense — Remote Emergency Co-Pilot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: { fontFamily: { sans: ['Plus Jakarta Sans', 'Inter', 'system-ui', 'sans-serif'] } } }
+        }
+    </script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 transition-colors duration-300 flex flex-col h-screen overflow-hidden">
+
+    <!-- Header -->
+    <header class="header-bg text-white">
+        <div class="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex items-center justify-between">
+                <!-- Logo -->
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-teal-500/20 rounded-xl flex items-center justify-center border border-teal-400/30">
+                        <span class="text-xl">🏥</span>
+                    </div>
+                    <div>
+                        <div class="flex items-baseline gap-2">
+                            <h1 class="text-xl font-extrabold tracking-tight">MediSense</h1>
+                            <span class="text-xs bg-teal-500/25 border border-teal-400/30 text-teal-200 px-2 py-0.5 rounded-full font-semibold">Beta</span>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-0.5" id="header-subtitle">Remote Emergency Healthcare Co-Pilot · Gemini Live</p>
+                    </div>
+                </div>
+
+                <!-- Centre: mode switcher -->
+                <div class="hidden md:flex items-center bg-white/10 rounded-xl p-1 border border-white/15">
+                    <button id="mode-nurse-btn"
+                        class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 mode-pill-active"
+                        onclick="switchMode('nurse')">
+                        🩺 Healthcare Worker
+                    </button>
+                    <button id="mode-patient-btn"
+                        class="px-4 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 mode-pill-inactive"
+                        onclick="switchMode('patient')">
+                        👤 Patient
+                    </button>
+                </div>
+
+                <!-- Right: status + theme -->
+                <div class="flex items-center gap-2">
+                    <div id="header-status" class="hidden sm:flex items-center gap-2 bg-white/10 border border-white/15 px-3 py-1.5 rounded-full text-xs font-semibold">
+                        <span class="status-dot status-inactive"></span>
+                        <span id="header-status-text">Offline</span>
+                    </div>
+                    <button id="theme-toggle" class="p-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/15 transition-colors" title="Toggle theme">
+                        <svg id="theme-light-icon" class="w-4 h-4 text-yellow-300 hidden" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"></path></svg>
+                        <svg id="theme-dark-icon" class="w-4 h-4 text-slate-300" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Disclaimer bar -->
+    <div class="bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200/60 dark:border-amber-800/30 text-amber-700 dark:text-amber-400 text-xs text-center py-1.5 px-4">
+        ⚠️ AI Assistant only · Not a substitute for professional medical advice · Emergency: call 911
+    </div>
+
+    <main class="flex-1 px-3 py-2 overflow-hidden">
+        <div class="flex gap-3 h-full">
+
+            <!-- Left Sidebar -->
+            <aside class="w-60 flex-shrink-0 space-y-2 overflow-y-auto pr-1">
+
+                <!-- Authentication -->
+                <div class="mc-card" id="auth-section">
+                    <div class="mc-card-header bg-gradient-to-r from-slate-800 to-teal-900 text-white">
+                        <div class="flex items-center gap-2">
+                            <div class="w-6 h-6 bg-white/10 rounded-lg flex items-center justify-center">
+                                <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"></path></svg>
+                            </div>
+                            <h3 class="font-bold text-sm">Connect</h3>
+                        </div>
+                        <span class="text-xs bg-teal-500/25 border border-teal-400/30 text-teal-200 px-2 py-0.5 rounded-full font-mono">geminihackathon7</span>
+                    </div>
+                    <div class="p-4 space-y-3" id="auth-body">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide">Access Token</label>
+                            <input type="password" id="access-token-input"
+                                class="mc-input"
+                                placeholder="Paste gcloud auth print-access-token" autocomplete="off">
+                        </div>
+                        <p class="text-xs text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-3 py-2 border border-slate-200 dark:border-slate-700/50 font-mono">
+                            gcloud auth print-access-token
+                        </p>
+                        <div id="validation-status" class="text-xs py-1.5 px-3 rounded-lg min-h-[28px] bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/50 text-slate-500"></div>
+                        <button id="validate-token-btn"
+                            class="w-full py-2.5 bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white text-sm rounded-xl font-bold transition-all shadow-sm">
+                            Connect →
+                        </button>
+                    </div>
+                </div>
+
+                <!-- User Profile -->
+                <div class="mc-card">
+                    <div id="profile-header" class="mc-card-header bg-gradient-to-r from-cyan-800 to-teal-800 text-white">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 h-7 bg-white/10 rounded-lg flex items-center justify-center text-sm" id="profile-avatar">👤</div>
+                            <h3 class="font-bold text-sm" id="profile-title">Worker Profile</h3>
+                        </div>
+                        <span class="text-xs text-teal-200">Hi, <span id="current-user-name" class="font-bold text-white">Rama</span></span>
+                    </div>
+                    <div class="p-3">
+                        <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide" id="name-label">Your Name</label>
+                        <div class="flex gap-1.5">
+                            <input type="text" id="user-name-input"
+                                class="mc-input flex-1"
+                                placeholder="e.g. Nurse Sarah">
+                            <button id="set-name-btn"
+                                class="px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs rounded-xl font-bold transition-all flex-shrink-0">
+                                Set
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Tips (switches with mode) -->
+                <div id="tips-nurse" class="mc-card">
+                    <div class="mc-card-header border-b border-slate-100 dark:border-slate-700/60">
+                        <span class="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide flex items-center gap-1.5">
+                            <span class="text-teal-500">💡</span> How to Use
+                        </span>
+                    </div>
+                    <ul class="p-3 space-y-2">
+                        <li class="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400">
+                            <span class="text-base leading-none mt-0.5">📷</span>
+                            <span><strong class="text-slate-700 dark:text-slate-300">Camera:</strong> Point at wound, equipment, patient</span>
+                        </li>
+                        <li class="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400">
+                            <span class="text-base leading-none mt-0.5">🖥️</span>
+                            <span><strong class="text-slate-700 dark:text-slate-300">Screen:</strong> Share EHR, monitors, lab results</span>
+                        </li>
+                        <li class="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400">
+                            <span class="text-base leading-none mt-0.5">🖼️</span>
+                            <span><strong class="text-slate-700 dark:text-slate-300">Upload:</strong> X-rays, images, reports</span>
+                        </li>
+                        <li class="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400">
+                            <span class="text-base leading-none mt-0.5">🎤</span>
+                            <span><strong class="text-slate-700 dark:text-slate-300">Voice:</strong> Ask questions hands-free</span>
+                        </li>
+                    </ul>
+                </div>
+                <div id="tips-patient" class="hidden mc-card border-violet-200 dark:border-violet-800/40">
+                    <div class="mc-card-header border-b border-violet-100 dark:border-violet-800/30">
+                        <span class="text-xs font-bold text-violet-600 dark:text-violet-300 uppercase tracking-wide flex items-center gap-1.5">
+                            <span>💊</span> How to Use
+                        </span>
+                    </div>
+                    <ul class="p-3 space-y-2">
+                        <li class="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400">
+                            <span class="text-base leading-none mt-0.5">📷</span>
+                            <span><strong class="text-slate-700 dark:text-slate-300">Camera:</strong> Show your pill or medicine bottle</span>
+                        </li>
+                        <li class="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400">
+                            <span class="text-base leading-none mt-0.5">📄</span>
+                            <span><strong class="text-slate-700 dark:text-slate-300">Upload:</strong> Photo of your prescription</span>
+                        </li>
+                        <li class="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400">
+                            <span class="text-base leading-none mt-0.5">🎤</span>
+                            <span><strong class="text-slate-700 dark:text-slate-300">Voice:</strong> Ask "What is this medicine?"</span>
+                        </li>
+                        <li class="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400">
+                            <span class="text-base leading-none mt-0.5">⚠️</span>
+                            <span>Always follow your doctor's instructions</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Patient Records (nurse mode only) -->
+                <div id="patient-records-panel" class="mc-card">
+                    <button id="patient-records-toggle"
+                        onclick="togglePatientPanel()"
+                        class="w-full mc-card-header bg-gradient-to-r from-blue-800 to-slate-800 text-white hover:from-blue-700 hover:to-slate-700 transition-colors">
+                        <div class="flex items-center gap-2">
+                            <div class="w-6 h-6 bg-white/10 rounded-md flex items-center justify-center">
+                                <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"></path></svg>
+                            </div>
+                            <span class="font-bold text-sm">Patient Records</span>
+                        </div>
+                        <span class="flex items-center gap-2">
+                            <span id="active-patient-badge" class="hidden text-xs bg-emerald-400 text-emerald-900 font-bold px-2 py-0.5 rounded-full">● Active</span>
+                            <svg id="patient-panel-chevron" class="w-4 h-4 opacity-60 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                            </svg>
+                        </span>
+                    </button>
+                    <div id="patient-records-body">
+                        <div id="patient-list-container" class="divide-y divide-slate-100 dark:divide-slate-700/50 max-h-80 overflow-y-auto">
+                            <div class="p-4 text-xs text-slate-400 text-center">Loading patients...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Patient Login Panel (patient mode only) -->
+                <div id="patient-login-panel" class="hidden mc-card border-violet-200 dark:border-violet-800/40">
+                    <div class="mc-card-header bg-gradient-to-r from-violet-700 to-indigo-700 text-white border-b border-violet-600/30">
+                        <div class="flex items-center gap-2">
+                            <div class="w-6 h-6 bg-white/10 rounded-md flex items-center justify-center text-sm">🧑‍⚕️</div>
+                            <span class="font-bold text-sm">Select Your Profile</span>
+                        </div>
+                        <span id="patient-login-badge" class="hidden text-xs bg-emerald-400 text-emerald-900 font-bold px-2 py-0.5 rounded-full">● Logged in</span>
+                    </div>
+                    <!-- Logged-in state -->
+                    <div id="patient-logged-in-view" class="hidden p-3">
+                        <div class="flex items-center gap-3 mb-3">
+                            <div id="logged-in-avatar" class="w-10 h-10 rounded-full bg-violet-100 dark:bg-violet-900/40 border-2 border-violet-300 dark:border-violet-600 flex items-center justify-center text-xl flex-shrink-0">👤</div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-bold text-slate-800 dark:text-slate-100 truncate" id="logged-in-name">—</p>
+                                <p class="text-xs text-slate-500 dark:text-slate-400 truncate" id="logged-in-info">—</p>
+                            </div>
+                        </div>
+                        <p class="text-xs text-violet-600 dark:text-violet-300 mb-2.5 font-medium">✅ Your health records are loaded. Ask me anything!</p>
+                        <button onclick="patientLogout()"
+                            class="w-full px-3 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 text-xs rounded-xl font-semibold transition-all border border-slate-200 dark:border-slate-600">
+                            ← Switch Patient / Log Out
+                        </button>
+                    </div>
+                    <!-- Patient selection list -->
+                    <div id="patient-login-list" class="divide-y divide-violet-100 dark:divide-violet-800/30 max-h-80 overflow-y-auto">
+                        <div class="p-4 text-xs text-slate-400 text-center">Loading profiles...</div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Main Content -->
+            <div id="main-content" class="flex-1 min-w-0 h-full"></div>
+        </div>
+    </main>
+
+    <footer class="flex-shrink-0 border-t border-slate-200 dark:border-slate-800 py-1.5 text-center text-xs text-slate-400 dark:text-slate-600 bg-white/50 dark:bg-slate-900/50">
+        AI assistant only · Not a substitute for professional medical advice · Emergency: call 911
+    </footer>
+
+    <!-- ── Patient Clinical Dashboard Modal ─────────────────────────────────── -->
+    <div id="charts-modal" class="hidden fixed inset-0 bg-slate-100 dark:bg-slate-900 z-[9000] overflow-y-auto">
+        <div class="max-w-6xl mx-auto p-6">
+            <!-- Header -->
+            <div class="flex items-start justify-between mb-6 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm">
+                <div class="min-w-0 flex-1">
+                    <h2 id="chart-modal-title" class="text-xl font-extrabold text-slate-800 dark:text-slate-100">Patient Dashboard</h2>
+                    <p id="chart-modal-subtitle" class="text-sm text-slate-500 dark:text-slate-400 mt-0.5"></p>
+                    <p id="chart-modal-allergy" class="text-sm font-semibold text-red-600 dark:text-red-400 mt-1"></p>
+                </div>
+                <div class="flex items-center gap-2 flex-shrink-0 ml-4">
+                    <span id="chart-modal-date" class="text-xs text-slate-400 mr-1"></span>
+                    <button onclick="window.printCharts()"
+                        class="px-3 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-xs rounded-xl font-semibold transition-all">
+                        🖨 Print
+                    </button>
+                    <button onclick="window.closeCharts()"
+                        class="px-3 py-2 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs rounded-xl font-semibold transition-all">
+                        ✕ Close
+                    </button>
+                </div>
+            </div>
+            <!-- Charts Grid -->
+            <div class="grid grid-cols-2 gap-5">
+                <!-- ESR Trend -->
+                <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm">
+                    <h3 class="font-bold text-sm text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2">
+                        <span class="w-7 h-7 rounded-lg bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-700 flex items-center justify-center text-sm">📈</span>
+                        ESR Trend
+                    </h3>
+                    <div id="chart-esr-wrap"><canvas id="chart-esr"></canvas></div>
+                </div>
+                <!-- Vitals Overview -->
+                <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm">
+                    <h3 class="font-bold text-sm text-slate-700 dark:text-slate-200 mb-1 flex items-center gap-2">
+                        <span class="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 flex items-center justify-center text-sm">💓</span>
+                        Current Vitals
+                        <span class="text-xs font-normal text-slate-400">— red = outside normal range</span>
+                    </h3>
+                    <canvas id="chart-vitals"></canvas>
+                </div>
+                <!-- Lab Results -->
+                <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm">
+                    <h3 class="font-bold text-sm text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2">
+                        <span class="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 flex items-center justify-center text-sm">🧪</span>
+                        Lab Results
+                    </h3>
+                    <div id="chart-labs-grid" class="overflow-y-auto" style="max-height:300px"></div>
+                </div>
+                <!-- Visit Timeline -->
+                <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 shadow-sm">
+                    <h3 class="font-bold text-sm text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2">
+                        <span class="w-7 h-7 rounded-lg bg-violet-50 dark:bg-violet-900/30 border border-violet-200 dark:border-violet-700 flex items-center justify-center text-sm">📋</span>
+                        Visit Notes
+                    </h3>
+                    <div id="chart-visits" class="overflow-y-auto" style="max-height:300px"></div>
+                </div>
+            </div>
+            <p class="text-center text-xs text-slate-400 mt-6">AI assistant only · Not a substitute for professional medical advice · Emergency: call 911</p>
+        </div>
+    </div>
+
+    <div id="notification-toast"></div>
+
+    <script type="module" src="/src/main.js"></script>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // Theme toggle
+        const themeBtn = document.getElementById('theme-toggle');
+        const lightIcon = document.getElementById('theme-light-icon');
+        const darkIcon = document.getElementById('theme-dark-icon');
+
+        function applyTheme(theme) {
+            document.documentElement.classList.toggle('dark', theme === 'dark');
+            lightIcon.classList.toggle('hidden', theme !== 'dark');
+            darkIcon.classList.toggle('hidden', theme === 'dark');
+        }
+        applyTheme(localStorage.getItem('theme') || 'light');
+
+        themeBtn?.addEventListener('click', () => {
+            const isDark = document.documentElement.classList.contains('dark');
+            const newTheme = isDark ? 'light' : 'dark';
+            applyTheme(newTheme);
+            localStorage.setItem('theme', newTheme);
+        });
+
+        // Mode switcher
+        window.switchMode = async function(mode) {
+            try {
+                await fetch('/api/set-mode', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mode })
+                });
+            } catch(_) {}
+
+            const isPatient = mode === 'patient';
+
+            // Toggle button styles
+            const nurseBtn = document.getElementById('mode-nurse-btn');
+            const patientBtn = document.getElementById('mode-patient-btn');
+            const BASE = 'px-4 py-1.5 rounded-lg text-xs font-bold transition-all duration-200';
+            if (isPatient) {
+                nurseBtn.className = `${BASE} mode-pill-inactive`;
+                patientBtn.className = `${BASE} mode-pill-active`;
+            } else {
+                nurseBtn.className = `${BASE} mode-pill-active`;
+                patientBtn.className = `${BASE} mode-pill-inactive`;
+            }
+
+            // Toggle tips panel
+            document.getElementById('tips-nurse').classList.toggle('hidden', isPatient);
+            document.getElementById('tips-patient').classList.toggle('hidden', !isPatient);
+
+            // Show/hide patient records panel (nurse only)
+            const patientPanel = document.getElementById('patient-records-panel');
+            if (patientPanel) patientPanel.classList.toggle('hidden', isPatient);
+
+            // Show/hide patient login panel (patient mode only)
+            const patientLoginPanel = document.getElementById('patient-login-panel');
+            if (patientLoginPanel) patientLoginPanel.classList.toggle('hidden', !isPatient);
+
+            // Update profile card heading and placeholder
+            const profileAvatar = document.getElementById('profile-avatar');
+            if (profileAvatar) profileAvatar.textContent = isPatient ? '\u{1F9D1}\u200D\u2695\uFE0F' : '\uD83D\uDC64';
+            document.getElementById('profile-title').textContent = isPatient ? 'Patient Profile' : 'Worker Profile';
+            document.getElementById('user-name-input').placeholder = isPatient ? 'e.g. John' : 'e.g. Nurse Sarah';
+            document.getElementById('name-label').textContent = isPatient ? 'Your First Name' : 'Your Name';
+
+            // Update header subtitle
+            const headerSub = document.getElementById('header-subtitle');
+            if (headerSub) {
+                headerSub.textContent = isPatient
+                    ? 'AI Medicine & Prescription Assistant \u00b7 Gemini Live'
+                    : 'Remote Emergency Healthcare Co-Pilot \u00b7 Gemini Live';
+            }
+
+            // Emit mode change event so chat UI can update its welcome message and placeholder
+            window.dispatchEvent(new CustomEvent('medisense-mode-change', { detail: { mode } }));
+
+            localStorage.setItem('medisense_mode', mode);
+        };
+
+        // Restore saved mode on load
+        const savedMode = localStorage.getItem('medisense_mode') || 'nurse';
+        if (savedMode === 'patient') switchMode('patient');
+
+        // Patient Records panel logic
+        let patientPanelOpen = true;
+        let patientsData = [];
+        let activePatientId = null;
+
+        window.togglePatientPanel = function() {
+            patientPanelOpen = !patientPanelOpen;
+            const body = document.getElementById('patient-records-body');
+            const chev = document.getElementById('patient-panel-chevron');
+            body.classList.toggle('hidden', !patientPanelOpen);
+            chev.style.transform = patientPanelOpen ? '' : 'rotate(-90deg)';
+        };
+
+        function esrColor(value, ref) {
+            // ref is e.g. "0-20" or "0–20"
+            const upper = parseInt((ref || '20').replace(/.*[\-\u2013]/, '')) || 20;
+            if (value <= upper)       return 'text-green-600 dark:text-green-400';
+            if (value <= upper * 2)   return 'text-yellow-600 dark:text-yellow-400';
+            if (value <= upper * 4)   return 'text-orange-600 dark:text-orange-400';
+            return 'text-red-600 dark:text-red-400';
+        }
+
+        function esrTrend(history) {
+            if (!history || history.length < 2) return '';
+            const diff = history[0].value - history[1].value;
+            if (diff > 5)  return ' ↑';
+            if (diff < -5) return ' ↓';
+            return ' →';
+        }
+
+        function renderPatients(patients) {
+            const container = document.getElementById('patient-list-container');
+            if (!patients.length) {
+                container.innerHTML = '<div class="p-4 text-xs text-gray-400 text-center">No patients available</div>';
+                return;
+            }
+            container.innerHTML = patients.map(p => {
+                const esr = p.esr_latest;
+                const esrVal = esr ? esr.value : null;
+                const esrRef = esr ? esr.ref : '0-20';
+                const esrCls = esrVal !== null ? esrColor(esrVal, esrRef) : 'text-gray-400';
+                const esrTrendStr = esrTrend(p.esr_history);
+                const isActive = p.id === activePatientId;
+                const urgencyBadge = p.diagnoses.some(d =>
+                    d.toLowerCase().includes('urgent') ||
+                    d.toLowerCase().includes('unstable') ||
+                    p.vitals?.spo2?.startsWith('89') ||
+                    (esrVal !== null && esrVal > 80)
+                );
+
+                // ESR visualisation bar
+                const esrNorm = parseInt((esrRef||'20').replace(/.*[\-\u2013]/, '')) || 20;
+                const esrBarPct = esrVal ? Math.min(100, Math.round((esrVal / esrNorm) * 25)) : 0;
+                const esrBarClr = esrVal <= esrNorm ? '#22c55e' : esrVal <= esrNorm*2 ? '#f59e0b' : esrVal <= esrNorm*4 ? '#f97316' : '#ef4444';
+
+                return `
+                <div id="patient-card-${p.id}"
+                    class="p-3 cursor-pointer transition-all ${
+                        isActive ? 'bg-emerald-50 dark:bg-emerald-900/20 border-l-4 border-emerald-500' : 'hover:bg-slate-50 dark:hover:bg-slate-700/30 border-l-4 border-transparent'
+                    }">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">${p.name}</span>
+                                <span class="text-xs text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 rounded font-medium">${p.age}${p.gender[0]}</span>
+                                ${ urgencyBadge ? '<span class="text-xs bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 px-1.5 rounded font-bold">⚠</span>' : '' }
+                            </div>
+                            <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-tight line-clamp-1">
+                                ${p.diagnoses[0]}
+                            </div>
+                            ${ esrVal !== null ? `
+                            <div class="mt-1.5">
+                                <div class="flex items-center gap-1">
+                                    <span class="text-xs font-bold ${esrCls}">${esrVal}${esrTrendStr}</span>
+                                    <span class="text-xs text-slate-400">mm/hr</span>
+                                </div>
+                                <div class="esr-bar-track"><div class="esr-bar-fill" style="width:${esrBarPct}%;background:${esrBarClr}"></div></div>
+                            </div>` : '' }
+                        </div>
+                        <div class="flex flex-col gap-1 flex-shrink-0">
+                            <button onclick="loadPatient('${p.id}', event)"
+                                class="px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
+                                    isActive
+                                        ? 'bg-emerald-600 text-white'
+                                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                }">
+                                ${isActive ? '✓' : 'Load'}
+                            </button>
+                            <button onclick="event.stopPropagation(); openPatientCharts('${p.id}')"
+                                class="px-2.5 py-1 text-xs font-bold rounded-lg bg-violet-100 dark:bg-violet-900/40 hover:bg-violet-200 dark:hover:bg-violet-900/70 text-violet-700 dark:text-violet-300 transition-all text-center" title="View clinical charts">
+                                📊
+                            </button>
+                            <button onclick="event.stopPropagation(); window.open('/patient-files/${p.id}', '_blank')"
+                                class="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-100 dark:bg-amber-900/40 hover:bg-amber-200 dark:hover:bg-amber-900/70 text-amber-700 dark:text-amber-300 transition-all text-center" title="Open lab reports &amp; X-rays">
+                                📂
+                            </button>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        window.loadPatient = async function(patientId, event) {
+            if (event) event.stopPropagation();
+            if (patientId === activePatientId) return;
+
+            try {
+                const res = await fetch('/api/set-patient', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ patient_id: patientId })
+                });
+                const data = await res.json();
+                if (!data.success) { console.error('set-patient failed'); return; }
+                activePatientId = patientId;
+
+                // Update badge
+                const badge = document.getElementById('active-patient-badge');
+                if (badge) { badge.classList.remove('hidden'); badge.textContent = '\u25cf Active'; }
+
+                // Re-render cards
+                renderPatients(patientsData.map(p => ({ ...p, is_active: p.id === patientId })));
+
+                // Get patient object for the event
+                const patient = patientsData.find(p => p.id === patientId);
+
+                // Notify chat UI
+                window.dispatchEvent(new CustomEvent('medisense-patient-loaded', {
+                    detail: { patient }
+                }));
+            } catch(e) { console.error('loadPatient error:', e); }
+        };
+
+        window.clearActivePatient = async function() {
+            await fetch('/api/set-patient', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ patient_id: null })
+            }).catch(_=>{});
+            activePatientId = null;
+            const badge = document.getElementById('active-patient-badge');
+            if (badge) badge.classList.add('hidden');
+            renderPatients(patientsData);
+            window.dispatchEvent(new CustomEvent('medisense-patient-loaded', { detail: { patient: null } }));
+        };
+
+        // Fetch patients from backend
+        async function fetchPatients() {
+            try {
+                const res = await fetch('/api/patients');
+                const data = await res.json();
+                patientsData = data.patients || [];
+                activePatientId = patientsData.find(p => p.is_active)?.id || null;
+                if (activePatientId) {
+                    const badge = document.getElementById('active-patient-badge');
+                    if (badge) { badge.classList.remove('hidden'); badge.textContent = '\u25cf Active'; }
+                }
+                renderPatients(patientsData);
+                renderPatientLoginList(patientsData);
+            } catch(e) {
+                document.getElementById('patient-list-container').innerHTML =
+                    '<div class="p-4 text-xs text-red-400 text-center">Failed to load patients</div>';
+            }
+        }
+
+        // ── Patient Login Panel (patient mode) ───────────────────────────────────
+        // Avatar emojis for each patient
+        const PATIENT_AVATARS = { P001: '👵', P002: '👨', P003: '👩', P004: '👴', P005: '🧒' };
+
+        function renderPatientLoginList(patients) {
+            const container = document.getElementById('patient-login-list');
+            if (!patients || !patients.length) {
+                container.innerHTML = '<div class="p-4 text-xs text-slate-400 text-center">No profiles available</div>';
+                return;
+            }
+            container.innerHTML = patients.map(p => `
+                <div class="p-3 hover:bg-violet-50 dark:hover:bg-violet-900/20 cursor-pointer transition-all select-none"
+                     onclick="patientLogin('${p.id}')">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full bg-violet-100 dark:bg-violet-900/40 border-2 border-violet-200 dark:border-violet-700 flex items-center justify-center text-xl flex-shrink-0">
+                            ${PATIENT_AVATARS[p.id] || '👤'}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">${p.name}</p>
+                            <p class="text-xs text-slate-500 dark:text-slate-400 truncate">${p.age} y/o · ${p.diagnoses[0]}</p>
+                        </div>
+                        <svg class="w-4 h-4 text-violet-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                        </svg>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        window.patientLogin = async function(patientId) {
+            try {
+                const res = await fetch('/api/patient-login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ patient_id: patientId })
+                });
+                const data = await res.json();
+                if (!data.success) { console.error('patient-login failed'); return; }
+
+                const p = patientsData.find(x => x.id === patientId);
+                const firstName = data.first_name || data.name.split(' ')[0];
+
+                // Show logged-in view
+                document.getElementById('patient-login-list').classList.add('hidden');
+                document.getElementById('patient-logged-in-view').classList.remove('hidden');
+                document.getElementById('patient-login-badge').classList.remove('hidden');
+                document.getElementById('logged-in-avatar').textContent = PATIENT_AVATARS[patientId] || '👤';
+                document.getElementById('logged-in-name').textContent = data.name;
+                document.getElementById('logged-in-info').textContent = `${p?.age || ''} y/o · ${p?.diagnoses[0] || ''}`;
+
+                // Sync name input
+                const nameInput = document.getElementById('user-name-input');
+                const nameDisplay = document.getElementById('current-user-name');
+                if (nameInput) nameInput.value = firstName;
+                if (nameDisplay) nameDisplay.textContent = firstName;
+
+                // Dispatch login event so health-chat.js can reset session with patient context
+                window.dispatchEvent(new CustomEvent('medisense-patient-login', {
+                    detail: { patientId, name: data.name, firstName }
+                }));
+            } catch(e) { console.error('patientLogin error:', e); }
+        };
+
+        window.patientLogout = async function() {
+            try {
+                await fetch('/api/patient-logout', { method: 'POST' }).catch(() => {});
+            } catch(_) {}
+
+            // Revert to selection list
+            document.getElementById('patient-login-list').classList.remove('hidden');
+            document.getElementById('patient-logged-in-view').classList.add('hidden');
+            document.getElementById('patient-login-badge').classList.add('hidden');
+
+            const nameInput = document.getElementById('user-name-input');
+            const nameDisplay = document.getElementById('current-user-name');
+            if (nameInput) nameInput.value = '';
+            if (nameDisplay) nameDisplay.textContent = 'Patient';
+
+            // Dispatch logout event — resets session to generic patient mode
+            window.dispatchEvent(new CustomEvent('medisense-patient-login', {
+                detail: { patientId: null, name: null, firstName: null }
+            }));
+        };
+
+        fetchPatients();
+        fetch('/api/auth-status').then(r => r.json()).then(data => {
+            if (data.authenticated) {
+                const authBody = document.getElementById('auth-body');
+                if (authBody) {
+                    authBody.innerHTML = `
+                        <div class="flex items-center gap-2.5 py-2.5 px-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-700/40">
+                            <div class="w-7 h-7 bg-emerald-100 dark:bg-emerald-900/50 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <svg class="w-4 h-4 text-emerald-600 dark:text-emerald-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+                            </div>
+                            <div>
+                                <p class="text-xs font-bold text-emerald-700 dark:text-emerald-300">Connected</p>
+                                <p class="text-xs text-slate-500 dark:text-slate-400">${data.project || 'Project active'}</p>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+        }).catch(() => {});
+
+        // Auth handlers
+        const statusEl = document.getElementById('validation-status');
+
+        document.getElementById('validate-token-btn')?.addEventListener('click', async () => {
+            const accessToken = document.getElementById('access-token-input').value.trim();
+
+            if (!accessToken) { statusEl.innerHTML = '<span class="text-red-600 font-bold">Paste your access token first</span>'; return; }
+
+            const btn = document.getElementById('validate-token-btn');
+            btn.disabled = true;
+            btn.textContent = 'Validating...';
+            statusEl.innerHTML = '<span class="text-blue-600 font-bold">Testing credentials...</span>';
+
+            try {
+                const res = await fetch('/api/validate-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ accessToken })
+                });
+                const result = await res.json();
+                if (result.valid) {
+                    statusEl.innerHTML = '<span class="text-green-600 font-bold">✅ Connected!</span>';
+                    btn.textContent = '✅ Connected';
+                    btn.style.background = 'linear-gradient(to right, #16a34a, #15803d)';
+                    setTimeout(() => {
+                        btn.textContent = 'Connect →';
+                        btn.style.background = '';
+                    }, 6000);
+                } else {
+                    statusEl.innerHTML = `<span class="text-red-600 font-bold">${result.message || 'Invalid credentials'}</span>`;
+                    btn.textContent = 'Retry';
+                }
+            } catch (e) {
+                statusEl.innerHTML = '<span class="text-red-600 font-bold">Connection failed</span>';
+                btn.textContent = 'Retry';
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        // ── Patient Clinical Charts ──────────────────────────────────────────────
+        const _chartInstances = {};
+
+        function _destroyChart(id) {
+            if (_chartInstances[id]) { _chartInstances[id].destroy(); delete _chartInstances[id]; }
+        }
+
+        function _parseFirstNumber(str) {
+            if (!str) return null;
+            const m = String(str).match(/(\d+\.?\d*)/);
+            return m ? parseFloat(m[1]) : null;
+        }
+
+        function _labStatus(str) {
+            if (!str) return 'normal';
+            const s = String(str).toUpperCase();
+            if (s.includes('CRITICAL')) return 'critical';
+            if (s.includes('HIGH'))     return 'high';
+            if (s.includes('LOW'))      return 'low';
+            if (s.includes('BORDERLINE') || s.includes('ELEVATED') || s.includes('PENDING')) return 'borderline';
+            if (s.includes('POSITIVE')) return 'positive';
+            return 'normal';
+        }
+
+        window.openPatientCharts = function(patientId) {
+            const p = patientsData.find(x => x.id === patientId);
+            if (!p) return;
+            document.getElementById('chart-modal-title').textContent = p.name + ' — Clinical Dashboard';
+            document.getElementById('chart-modal-subtitle').textContent =
+                p.age + ' y/o ' + p.gender + ' · ' + p.blood_type + ' · ' + p.diagnoses[0];
+            document.getElementById('chart-modal-allergy').textContent =
+                p.allergies && p.allergies.length && p.allergies[0] !== 'None known'
+                    ? '⚠️ Allergies: ' + p.allergies.join(', ') : '';
+            document.getElementById('chart-modal-date').textContent =
+                'As of ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+            document.getElementById('charts-modal').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            // Destroy old charts and re-render
+            ['esr','vitals'].forEach(_destroyChart);
+            setTimeout(() => {
+                _renderESRChart(p);
+                _renderVitalsChart(p);
+                _renderLabsGrid(p);
+                _renderVisitTimeline(p);
+            }, 80);
+        };
+
+        window.closeCharts = function() {
+            document.getElementById('charts-modal').classList.add('hidden');
+            document.body.style.overflow = '';
+            ['esr','vitals'].forEach(_destroyChart);
+        };
+
+        window.printCharts = function() { window.print(); };
+
+        function _renderESRChart(p) {
+            _destroyChart('esr');
+            const esr = [...(p.esr_history || [])].reverse(); // oldest → newest
+            const wrap = document.getElementById('chart-esr-wrap');
+            if (!esr.length) {
+                wrap.innerHTML = '<p class="text-center text-slate-400 py-10 text-sm italic">No ESR trend data available</p>';
+                return;
+            }
+            wrap.innerHTML = '<canvas id="chart-esr"></canvas>';
+            const refUpper = parseInt((esr[0].ref || '20').replace(/.*[\-\u2013]/, '')) || 20;
+            const ctx = document.getElementById('chart-esr').getContext('2d');
+            _chartInstances['esr'] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: esr.map(e => e.date),
+                    datasets: [
+                        {
+                            label: 'ESR (mm/hr)',
+                            data: esr.map(e => e.value),
+                            borderColor: '#0d9488',
+                            backgroundColor: 'rgba(13,148,136,0.08)',
+                            pointBackgroundColor: esr.map(e => e.value > refUpper ? '#ef4444' : '#0d9488'),
+                            pointRadius: 7, pointHoverRadius: 9,
+                            tension: 0.35, fill: true, borderWidth: 2.5,
+                        },
+                        {
+                            label: 'Normal max (' + refUpper + ' mm/hr)',
+                            data: esr.map(() => refUpper),
+                            borderColor: '#94a3b8', borderDash: [6, 4],
+                            borderWidth: 1.5, pointRadius: 0, fill: false,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'top', labels: { font: { size: 11.5 } } },
+                        tooltip: { mode: 'index', intersect: false }
+                    },
+                    scales: {
+                        y: { beginAtZero: true, title: { display: true, text: 'mm/hr' } },
+                        x: { title: { display: true, text: 'Date' } }
+                    }
+                }
+            });
+        }
+
+        function _renderVitalsChart(p) {
+            _destroyChart('vitals');
+            const v = p.vitals || {};
+            const bpM = String(v.bp || '').match(/(\d+)\/(\d+)/);
+            const vitals = [];
+            const hr   = _parseFirstNumber(v.hr);
+            const rr   = _parseFirstNumber(v.rr);
+            const spo2 = _parseFirstNumber(v.spo2);
+            const temp = _parseFirstNumber(v.temp);
+            const bpSys = bpM ? parseInt(bpM[1]) : null;
+            const bpDia = bpM ? parseInt(bpM[2]) : null;
+
+            if (hr   != null) vitals.push({ label: 'HR (bpm)',        value: hr,    low: 60,   high: 100,  unit: 'bpm'  });
+            if (bpSys != null) vitals.push({ label: 'BP Systolic',    value: bpSys, low: 90,   high: 140,  unit: 'mmHg' });
+            if (bpDia != null) vitals.push({ label: 'BP Diastolic',   value: bpDia, low: 60,   high: 90,   unit: 'mmHg' });
+            if (rr   != null) vitals.push({ label: 'Resp. Rate (/min)', value: rr,  low: 12,   high: 20,   unit: '/min' });
+            if (spo2 != null && spo2 < 110) vitals.push({ label: 'SpO₂ (%)',  value: spo2, low: 94, high: 100, unit: '%' });
+            if (temp != null && temp < 45)  vitals.push({ label: 'Temp (°C)', value: temp, low: 36.1, high: 37.5, unit: '°C' });
+
+            if (!vitals.length) return;
+
+            const colors = vitals.map(vt =>
+                (vt.label === 'SpO₂ (%)' ? vt.value < 94 : (vt.value < vt.low || vt.value > vt.high))
+                    ? '#ef4444' : '#10b981'
+            );
+
+            const ctx = document.getElementById('chart-vitals').getContext('2d');
+            _chartInstances['vitals'] = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: vitals.map(vt => vt.label),
+                    datasets: [{
+                        label: 'Value',
+                        data: vitals.map(vt => vt.value),
+                        backgroundColor: colors.map(c => c + '28'),
+                        borderColor: colors,
+                        borderWidth: 2.5,
+                        borderRadius: 6,
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx2 => {
+                                    const vt = vitals[ctx2.dataIndex];
+                                    return ' ' + ctx2.raw + ' ' + vt.unit + '  (normal ' + vt.low + '–' + vt.high + ')';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { beginAtZero: false },
+                        y: { ticks: { font: { size: 12 } } }
+                    }
+                }
+            });
+        }
+
+        function _renderLabsGrid(p) {
+            const container = document.getElementById('chart-labs-grid');
+            if (!container) return;
+            const labs = Object.entries(p.labs_summary || {});
+            if (!labs.length) {
+                container.innerHTML = '<p class="text-center text-slate-400 py-4 text-sm italic">No lab data available</p>';
+                return;
+            }
+            const cfg = {
+                normal:     { bg: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-700', text: 'text-emerald-700 dark:text-emerald-300', badge: 'bg-emerald-100 dark:bg-emerald-800 text-emerald-800 dark:text-emerald-200', label: 'NORMAL' },
+                high:       { bg: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700',               text: 'text-red-700 dark:text-red-300',         badge: 'bg-red-100 dark:bg-red-800 text-red-800 dark:text-red-100',              label: 'HIGH' },
+                low:        { bg: 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700',       text: 'text-amber-700 dark:text-amber-300',     badge: 'bg-amber-100 dark:bg-amber-800 text-amber-800 dark:text-amber-100',      label: 'LOW' },
+                borderline: { bg: 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-700',  text: 'text-orange-700 dark:text-orange-300',   badge: 'bg-orange-100 dark:bg-orange-800 text-orange-800 dark:text-orange-100',  label: 'BORDERLINE' },
+                positive:   { bg: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-700',  text: 'text-purple-700 dark:text-purple-300',   badge: 'bg-purple-100 dark:bg-purple-800 text-purple-800 dark:text-purple-100',  label: 'POSITIVE' },
+                critical:   { bg: 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-700',          text: 'text-rose-800 dark:text-rose-200',        badge: 'bg-rose-200 dark:bg-rose-800 text-rose-900 dark:text-rose-100',          label: '⚠ ALERT' },
+            };
+            container.innerHTML = '<div class="grid grid-cols-2 gap-2">' +
+                labs.map(([key, val]) => {
+                    const st  = _labStatus(val);
+                    const c   = cfg[st] || cfg.normal;
+                    const lbl = key.replace(/_/g, ' ').toUpperCase();
+                    const short = typeof val === 'string' && val.length > 70 ? val.slice(0, 67) + '…' : val;
+                    return `<div class="rounded-xl border p-3 ${c.bg}">
+                        <div class="flex items-center justify-between mb-1 gap-1">
+                            <span class="text-xs font-bold ${c.text} leading-tight">${lbl}</span>
+                            <span class="text-xs font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${c.badge}">${c.label}</span>
+                        </div>
+                        <p class="text-xs text-slate-600 dark:text-slate-400 leading-snug">${short}</p>
+                    </div>`;
+                }).join('') +
+            '</div>';
+        }
+
+        function _renderVisitTimeline(p) {
+            const container = document.getElementById('chart-visits');
+            if (!container) return;
+            const notes = p.visit_notes || [];
+            if (!notes.length) {
+                container.innerHTML = '<p class="text-center text-slate-400 py-4 text-sm italic">No visit notes</p>';
+                return;
+            }
+            container.innerHTML = notes.map((n, i) => {
+                const isLatest = i === 0;
+                const isUrgent = /URGENT|CRITICAL|PAEDIATRIC/i.test(n.note);
+                const dotColor = isUrgent ? 'bg-red-500' : isLatest ? 'bg-teal-500' : 'bg-slate-300 dark:bg-slate-600';
+                return `<div class="flex gap-3 ${ i < notes.length - 1 ? 'mb-4' : ''}">
+                    <div class="flex flex-col items-center flex-shrink-0 mt-1">
+                        <div class="w-3 h-3 rounded-full ${dotColor} flex-shrink-0 shadow-sm"></div>
+                        ${ i < notes.length - 1 ? '<div class="w-0.5 flex-1 bg-slate-200 dark:bg-slate-700 mt-1 mb-0 min-h-[16px]"></div>' : '' }
+                    </div>
+                    <div class="flex-1 pb-1">
+                        <div class="flex items-center gap-1.5 flex-wrap mb-0.5">
+                            <span class="text-xs font-bold text-slate-500 dark:text-slate-400">${n.date}</span>
+                            ${ isUrgent ? '<span class="text-xs bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 px-1.5 py-0.5 rounded-full font-bold">URGENT</span>' : '' }
+                            ${ isLatest && !isUrgent ? '<span class="text-xs bg-teal-100 dark:bg-teal-900/50 text-teal-700 dark:text-teal-300 px-1.5 py-0.5 rounded-full font-bold">Latest</span>' : '' }
+                        </div>
+                        <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">${n.note}</p>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+    });
+    </script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+{
+  "mcpServers": {
+    "eap-health": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "c:\\Users\\garglakshay\\.vscode\\extensions\\oce-team.wacamole-0.3.6\\dist\\servers\\eap-health.mjs"
+      ],
+      "env": {
+        "WACAMOLE_DATA_DIR": "c:\\Users\\garglakshay\\.vscode\\extensions\\oce-team.wacamole-0.3.6\\dist\\data",
+        "WACAMOLE_EXTENSION_PATH": "c:\\Users\\garglakshay\\.vscode\\extensions\\oce-team.wacamole-0.3.6",
+        "WACAMOLE_VERSION": "0.3.6"
+      }
+    },
+    "wac-signals": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "c:\\Users\\garglakshay\\.vscode\\extensions\\oce-team.wacamole-0.3.6\\dist\\servers\\wac-signals.mjs"
+      ],
+      "env": {
+        "WACAMOLE_DATA_DIR": "c:\\Users\\garglakshay\\.vscode\\extensions\\oce-team.wacamole-0.3.6\\dist\\data",
+        "WACAMOLE_EXTENSION_PATH": "c:\\Users\\garglakshay\\.vscode\\extensions\\oce-team.wacamole-0.3.6",
+        "WACAMOLE_VERSION": "0.3.6"
+      }
+    },
+    "schema-registry": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "c:\\Users\\garglakshay\\.vscode\\extensions\\oce-team.wacamole-0.3.6\\dist\\servers\\schema-registry.mjs"
+      ],
+      "env": {
+        "WACAMOLE_DATA_DIR": "c:\\Users\\garglakshay\\.vscode\\extensions\\oce-team.wacamole-0.3.6\\dist\\data",
+        "WACAMOLE_EXTENSION_PATH": "c:\\Users\\garglakshay\\.vscode\\extensions\\oce-team.wacamole-0.3.6",
+        "WACAMOLE_VERSION": "0.3.6"
+      }
+    },
+    "ado-config": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "c:\\Users\\garglakshay\\.vscode\\extensions\\oce-team.wacamole-0.3.6\\dist\\servers\\ado-config.mjs"
+      ],
+      "env": {
+        "WACAMOLE_DATA_DIR": "c:\\Users\\garglakshay\\.vscode\\extensions\\oce-team.wacamole-0.3.6\\dist\\data",
+        "WACAMOLE_EXTENSION_PATH": "c:\\Users\\garglakshay\\.vscode\\extensions\\oce-team.wacamole-0.3.6",
+        "WACAMOLE_VERSION": "0.3.6"
+      }
+    },
+    "icm-incidents": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "c:\\Users\\garglakshay\\.vscode\\extensions\\oce-team.wacamole-0.3.6\\dist\\servers\\icm-proxy.mjs"
+      ],
+      "env": {
+        "WACAMOLE_DATA_DIR": "c:\\Users\\garglakshay\\.vscode\\extensions\\oce-team.wacamole-0.3.6\\dist\\data",
+        "WACAMOLE_EXTENSION_PATH": "c:\\Users\\garglakshay\\.vscode\\extensions\\oce-team.wacamole-0.3.6",
+        "WACAMOLE_VERSION": "0.3.6"
+      }
+    },
+    "workiq": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@microsoft/workiq",
+        "mcp"
+      ]
+    }
+  }
+}
