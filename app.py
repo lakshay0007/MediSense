@@ -38,7 +38,7 @@ socketio = SocketIO(
     cors_allowed_origins="*",
     async_mode="threading",
     ping_timeout=300,
-    ping_interval=60,
+    ping_interval=25,
     max_http_buffer_size=50000000,
     transports=["polling"],
 )
@@ -48,7 +48,7 @@ DEFAULT_PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "geminihackathon7")
 DEFAULT_LOCATION_ID = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
 
 GEMINI_LIVE_MODEL = "gemini-live-2.5-flash-native-audio"
-GEMINI_IMAGE_MODEL = "gemini-2.5-flash-preview-image-generation"
+GEMINI_IMAGE_MODEL = "gemini-2.0-flash-preview-image-generation"
 
 # Global state
 session_credentials = {}
@@ -959,9 +959,6 @@ async def run_live_session(session_id, sid):
                                             room=current_sid,
                                         )
 
-                                if response.server_content and response.server_content.interrupted:
-                                    socketio.emit("audio_interrupted", {}, room=current_sid)
-
                                 if (
                                     response.server_content
                                     and response.server_content.model_turn
@@ -1505,7 +1502,7 @@ def validate_token():
     data = request.json
     access_token = data.get("accessToken")
     location = data.get("location", DEFAULT_LOCATION_ID)
-    project_id = DEFAULT_PROJECT_ID
+    project_id = data.get("projectId", "").strip() or DEFAULT_PROJECT_ID
 
     if not access_token:
         return jsonify({"valid": False, "message": "Access token required"})

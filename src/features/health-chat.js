@@ -16,6 +16,9 @@ let sessionStartPending = false;
 let audioQueue = [];
 let isPlayingAudio = false;
 let playbackAudioContext = null;
+let nextStartTime = 0;
+let modelSpeaking = false;
+let modelSpeakingTimer = null;
 
 let cameraStream = null;
 let screenStream = null;
@@ -548,7 +551,7 @@ async function startVoice() {
         const INTERVAL = 500;
 
         processor.onaudioprocess = e => {
-            if (!isRecording || !isConnected) return;
+            if (!isRecording || !isConnected || modelSpeaking) return;
             const raw = e.inputBuffer.getChannelData(0);
             const int16 = new Int16Array(raw.length);
             for (let i = 0; i < raw.length; i++) {
@@ -784,14 +787,12 @@ function clearUploadedImages() {
 
 function playAudioResponse(data) {
     if (!data.audio) return;
-    audioQueue.push(data);
-    if (!isPlayingAudio) playNextAudio();
+    modelSpeaking = true;
+    if (modelSpeakingTimer) clearTimeout(modelSpeakingTimer);
+    scheduleAudioChunk(data);
 }
 
-async function playNextAudio() {
-    if (!audioQueue.length) { isPlayingAudio = false; return; }
-    isPlayingAudio = true;
-    const data = audioQueue.shift();
+async function scheduleAudioChunk(data) {
     try {
         if (!playbackAudioContext) {
             playbackAudioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
@@ -809,11 +810,20 @@ async function playNextAudio() {
         const src = playbackAudioContext.createBufferSource();
         src.buffer = buf;
         src.connect(playbackAudioContext.destination);
-        src.onended = () => playNextAudio();
-        src.start(0);
+
+        const now = playbackAudioContext.currentTime;
+        const when = Math.max(now + 0.01, nextStartTime);
+        nextStartTime = when + buf.duration;
+        src.start(when);
+
+        // Un-mute mic shortly after this chunk finishes
+        const endTime = when + buf.duration;
+        const delayMs = Math.max(0, (endTime - playbackAudioContext.currentTime) * 1000) + 300;
+        if (modelSpeakingTimer) clearTimeout(modelSpeakingTimer);
+        modelSpeakingTimer = setTimeout(() => { modelSpeaking = false; }, delayMs);
     } catch (err) {
         console.error('Playback error:', err);
-        playNextAudio();
+        modelSpeaking = false;
     }
 }
 

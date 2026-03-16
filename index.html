@@ -108,7 +108,7 @@
                             </div>
                             <h3 class="font-bold text-sm">Connect</h3>
                         </div>
-                        <span class="text-xs bg-teal-500/25 border border-teal-400/30 text-teal-200 px-2 py-0.5 rounded-full font-mono">geminihackathon7</span>
+                        <input id="project-id-input" type="text" value="geminihackathon7" class="text-xs bg-teal-500/25 border border-teal-400/30 text-teal-200 px-2 py-0.5 rounded-full font-mono text-center w-40 outline-none focus:border-teal-300 placeholder-teal-400/60" placeholder="project-id">
                     </div>
                     <div class="p-4 space-y-3" id="auth-body">
                         <div>
@@ -614,7 +614,13 @@
 
         window.loadPatient = async function(patientId, event) {
             if (event) event.stopPropagation();
-            if (patientId === activePatientId) return;
+            if (patientId === activePatientId) {
+                // Already active — just navigate to dashboard
+                navigateTo('dashboard');
+                const pt = patientsData.find(p => p.id === patientId);
+                if (pt && typeof window.renderDashboard === 'function') window.renderDashboard(pt);
+                return;
+            }
 
             try {
                 const res = await fetch('/api/set-patient', {
@@ -642,8 +648,9 @@
                     detail: { patient }
                 }));
 
-                // Auto-navigate to Dashboard
+                // Auto-navigate to Dashboard and render it directly
                 navigateTo('dashboard');
+                if (patient && typeof window.renderDashboard === 'function') window.renderDashboard(patient);
             } catch(e) { console.error('loadPatient error:', e); }
         };
 
@@ -803,7 +810,7 @@
                 const res = await fetch('/api/validate-token', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ accessToken })
+                    body: JSON.stringify({ accessToken, projectId: document.getElementById('project-id-input')?.value.trim() || '' })
                 });
                 const result = await res.json();
                 if (result.valid) {
