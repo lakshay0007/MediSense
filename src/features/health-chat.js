@@ -138,6 +138,7 @@ export function initHealthChat() {
         // Smart clinical features
         document.getElementById('generate-ddx-btn')?.addEventListener('click', generateDDx);
         document.getElementById('generate-sbar-btn')?.addEventListener('click', generateSBAR);
+        document.getElementById('generate-image-btn')?.addEventListener('click', generateVisualAid);
         document.getElementById('close-ddx-btn')?.addEventListener('click', () => {
             document.getElementById('ddx-panel')?.classList.add('hidden');
         });
@@ -287,6 +288,13 @@ function initSocket() {
     });
 
     socket.on('audio_response', playAudioResponse);
+
+    socket.on('image_response', data => {
+        if (data.image) {
+            aiThinking?.classList.add('hidden');
+            addImageMessage(data.image, data.mime_type || 'image/png', data.context || '');
+        }
+    });
 
     // Tool calls forwarded to backend for execution
     socket.on('tool_call', async data => {
@@ -874,6 +882,43 @@ function addMessage(role, text) {
     aiThinking?.classList.add('hidden');
 }
 
+function addImageMessage(imageB64, mimeType, context) {
+    if (!messagesContainer) return;
+    const welcome = document.getElementById('welcome-message');
+    if (welcome) welcome.remove();
+
+    const div = document.createElement('div');
+    div.className = 'message message-assistant mb-1';
+
+    const dataUrl = `data:${mimeType};base64,${imageB64}`;
+    div.innerHTML = `
+        <div class="msg-label text-cyan-600 dark:text-cyan-400">🏥 MediSense — Visual Aid</div>
+        <div class="bubble-wrap">
+            <div class="bubble" style="padding:8px">
+                ${context ? `<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">${escapeHtml(context)}</p>` : ''}
+                <img src="${dataUrl}" alt="AI Generated Medical Illustration" 
+                     class="rounded-lg max-w-full cursor-pointer" 
+                     style="max-height:400px; border:1px solid rgba(0,0,0,0.1)"
+                     onclick="window.open(this.src, '_blank')" />
+            </div>
+            <button class="copy-btn download-img-btn">Save</button>
+        </div>`;
+
+    const saveBtn = div.querySelector('.download-img-btn');
+    saveBtn?.addEventListener('click', () => {
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = `medisense-visual-${Date.now()}.png`;
+        a.click();
+        saveBtn.textContent = '\u2713';
+        setTimeout(() => { saveBtn.textContent = 'Save'; }, 2000);
+    });
+
+    messagesContainer.appendChild(div);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    aiThinking?.classList.add('hidden');
+}
+
 function showUrgentAlert(alert, action) {
     if (!urgentBanner) return;
     if (urgentText) urgentText.textContent = alert;
@@ -1184,6 +1229,38 @@ function renderRiskScores(patient) {
             'Initiate sepsis bundle: blood cultures, lactate, IV access. Urgent medical review.'
         );
         showToast(`qSOFA ${qsofa.score}/3 — Sepsis screening required`, 'error', 6000);
+    }
+}
+
+async function generateVisualAid() {
+    const prompt = userInput?.value?.trim();
+    if (!prompt) { showToast('Type a description for the image you want to generate', 'warning'); return; }
+
+    addMessage('user', `🎨 Generate visual: ${prompt}`);
+    userInput.value = '';
+    aiThinking?.classList.remove('hidden');
+    const thinkingText = document.getElementById('ai-thinking-text');
+    if (thinkingText) thinkingText.textContent = 'Generating visual aid...';
+
+    try {
+        const res = await fetch('/api/generate-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt })
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        if (data.image) {
+            addImageMessage(data.image, data.mime_type || 'image/png', data.caption || prompt);
+            showToast('Visual aid generated', 'success', 3000);
+        } else {
+            throw new Error('No image returned');
+        }
+    } catch (err) {
+        aiThinking?.classList.add('hidden');
+        addMessage('assistant', `⚠️ Could not generate image: ${err.message}`);
+        showToast('Image generation failed', 'error');
     }
 }
 

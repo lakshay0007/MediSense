@@ -48,6 +48,7 @@ DEFAULT_PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "geminihackathon7")
 DEFAULT_LOCATION_ID = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
 
 GEMINI_LIVE_MODEL = "gemini-live-2.5-flash-native-audio"
+GEMINI_IMAGE_MODEL = "gemini-2.5-flash-preview-image-generation"
 
 # Global state
 session_credentials = {}
@@ -775,6 +776,30 @@ async def run_live_session(session_id, sid):
                             },
                         ),
                         types.FunctionDeclaration(
+                            name="generate_visual_aid",
+                            description=(
+                                "Generate a medical illustration, diagram, or visual aid image using AI image generation. "
+                                "Use this when the user asks to see a diagram, when explaining anatomy, showing procedure technique, "
+                                "illustrating a medical concept, or when a visual reference would help the user understand better. "
+                                "Examples: anatomical diagrams, wound care illustrations, medication appearance, "
+                                "injection angle guides, bandaging techniques, or any clinical visual aid."
+                            ),
+                            parameters={
+                                "type": "object",
+                                "properties": {
+                                    "prompt": {
+                                        "type": "string",
+                                        "description": "Detailed description of the medical illustration to generate. Be specific about anatomy, angles, labels, colors, and style. Always specify 'medical illustration style, clean, professional, labeled diagram'.",
+                                    },
+                                    "context": {
+                                        "type": "string",
+                                        "description": "Brief clinical context for why this visual is needed",
+                                    },
+                                },
+                                "required": ["prompt"],
+                            },
+                        ),
+                        types.FunctionDeclaration(
                             name="update_procedure_step",
                             description=(
                                 "Update the status of a step in the active procedure checklist. "
@@ -1373,10 +1398,103 @@ def handle_tool_call():
 
             return jsonify({"status": result_msg, "step": step_number})
 
+        elif function_name == "generate_visual_aid":
+            prompt = function_args.get("prompt", "")
+            context = function_args.get("context", "")
+
+            # Call Nano Banana image generation
+            image_b64 = None
+            try:
+                client = get_active_client()
+                if client:
+                    img_response = client.models.generate_content(
+                        model=GEMINI_IMAGE_MODEL,
+                        contents=f"Generate a clear, professional medical illustration: {prompt}",
+                        config=types.GenerateContentConfig(
+                            response_modalities=["TEXT", "IMAGE"],
+                        ),
+                    )
+                    for part in img_response.candidates[0].content.parts:
+                        if part.inline_data and part.inline_data.mime_type.startswith("image/"):
+                            image_b64 = base64.b64encode(part.inline_data.data).decode("utf-8")
+                            mime_type = part.inline_data.mime_type
+                            break
+            except Exception as img_err:
+                logging.error(f"Image generation error: {img_err}")
+
+            if session_id in bridges and function_call_id:
+                response = [
+                    types.FunctionResponse(
+                        id=function_call_id,
+                        name="generate_visual_aid",
+                        response={"status": "generated" if image_b64 else "failed"},
+                    )
+                ]
+                bridges[session_id].put_nowait({"type": "tool_response", "data": response})
+
+            if image_b64 and session_id in live_sessions:
+                socketio.emit(
+                    "image_response",
+                    {
+                        "image": image_b64,
+                        "mime_type": mime_type,
+                        "context": context or "Visual aid",
+                    },
+                    room=live_sessions[session_id]["sid"],
+                )
+
+            return jsonify({"status": "generated" if image_b64 else "failed"})
+
         return jsonify({"error": "Unknown tool"}), 400
 
     except Exception as e:
         logging.error(f"Tool call error: {e}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/generate-image", methods=["POST"])
+def generate_image():
+    """Generate a medical illustration using Nano Banana (Gemini image generation)."""
+    try:
+        client = get_active_client()
+        if not client:
+            return jsonify({"error": "Not authenticated"}), 401
+
+        data = request.json
+        prompt = data.get("prompt", "")
+        if not prompt:
+            return jsonify({"error": "Prompt is required"}), 400
+
+        response = client.models.generate_content(
+            model=GEMINI_IMAGE_MODEL,
+            contents=f"Generate a clear, professional medical illustration: {prompt}",
+            config=types.GenerateContentConfig(
+                response_modalities=["TEXT", "IMAGE"],
+            ),
+        )
+
+        image_b64 = None
+        mime_type = "image/png"
+        text_caption = ""
+        for part in response.candidates[0].content.parts:
+            if part.inline_data and part.inline_data.mime_type.startswith("image/"):
+                image_b64 = base64.b64encode(part.inline_data.data).decode("utf-8")
+                mime_type = part.inline_data.mime_type
+            elif part.text:
+                text_caption = part.text
+
+        if not image_b64:
+            return jsonify({"error": "No image generated"}), 500
+
+        return jsonify({
+            "image": image_b64,
+            "mime_type": mime_type,
+            "caption": text_caption,
+        })
+
+    except Exception as e:
+        logging.error(f"Image generation error: {e}")
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 

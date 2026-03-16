@@ -1,5 +1,28 @@
 /* MediSense — Enhanced UI Styles */
 
+/* ── Page Navigation Tabs ─────────────────────────────────────── */
+.page-tab {
+    border-bottom: 3px solid transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    background: none;
+}
+.page-tab:hover {
+    color: #475569;
+    background: rgba(13,148,136,0.05);
+}
+.dark .page-tab:hover { color: #cbd5e1; background: rgba(13,148,136,0.1); }
+.page-tab-active {
+    color: #0d9488 !important;
+    border-bottom-color: #0d9488 !important;
+    background: rgba(13,148,136,0.06) !important;
+}
+.dark .page-tab-active {
+    color: #2dd4bf !important;
+    border-bottom-color: #2dd4bf !important;
+    background: rgba(45,212,191,0.08) !important;
+}
+
 /* ── Tokens ───────────────────────────────────────────────────── */
 :root {
     --teal:   #0d9488;
